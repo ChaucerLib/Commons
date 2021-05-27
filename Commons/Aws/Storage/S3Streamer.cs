@@ -31,7 +31,7 @@ namespace Commons.Aws.Storage
         /// <param name="s3Client"></param>
         /// <param name="logger"></param>
         /// <param name="chunkSizeBytes">The size of each multipart upload chunk. Must be at least 5MB (5,242,880 bytes)</param>
-        public S3Streamer(HttpClient reusableHttpClient, IAmazonS3 s3Client, ILogger<IStorageStreamer> logger, int chunkSizeBytes)
+        public S3Streamer(HttpClient reusableHttpClient, IAmazonS3 s3Client, int chunkSizeBytes, ILogger<IStorageStreamer> logger)
         {
             _http = reusableHttpClient ?? throw new ArgumentNullException(nameof(reusableHttpClient));
             _s3 = s3Client ?? throw new ArgumentNullException(nameof(s3Client));
