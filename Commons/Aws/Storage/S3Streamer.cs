@@ -42,16 +42,17 @@ namespace Commons.Aws.Storage
         }
 
 
-        public Task StreamLocalToS3(string localFile, string bucketName, string fileName, CancellationToken ct)
+        public Task<TransferReport> StreamLocalToS3(string localFile, string bucketName, string fileName, CancellationToken ct)
         {
             throw new System.NotImplementedException();
         }
 
-        public async Task StreamHttpToS3(string remoteUrl, string bucketName, string fileName, CancellationToken ct)
+        public async Task<TransferReport> StreamHttpToS3(string remoteUrl, string bucketName, string fileName, CancellationToken ct)
         {
             _log.LogInformation($"Chunking and streaming {remoteUrl} to {bucketName}:{fileName} in {_chunkSize:N0} byte increments");
             var cycleTimer = Stopwatch.StartNew();
 
+            string destinationUri = null;
             long artifactSize;
             using (var resp = await _http.GetAsync(remoteUrl, HttpCompletionOption.ResponseHeadersRead, ct))
             {
@@ -169,6 +170,7 @@ namespace Commons.Aws.Storage
             };
             var completionTimer = Stopwatch.StartNew();
             var completionResp = await _s3.CompleteMultipartUploadAsync(completionReq, ct);
+            destinationUri = completionResp.Location;
             completionTimer.Stop();
             cycleTimer.Stop();
             
@@ -180,8 +182,17 @@ namespace Commons.Aws.Storage
                 _log.LogError(jobMsg);
                 throw new ApplicationException(msg);
             }
+            
             _log.LogInformation(msg);
             _log.LogInformation(jobMsg);
+            return new TransferReport
+            {
+                SourceUrl = remoteUrl,
+                DestinationUrl = destinationUri,
+                Chunks = parts.Count,
+                Bytes = artifactSize,
+                Duration = completionTimer.Elapsed,
+            };
         }
 
         /// <summary>

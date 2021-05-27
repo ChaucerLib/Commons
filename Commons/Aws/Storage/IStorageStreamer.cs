@@ -16,7 +16,7 @@ namespace Commons.Aws.Storage
         /// <param name="fileName">S3 key name</param>
         /// <param name="ct"></param>
         /// <returns></returns>
-        public Task StreamLocalToS3(string localFile, string bucketName, string fileName, CancellationToken ct);
+        public Task<TransferReport> StreamLocalToS3(string localFile, string bucketName, string fileName, CancellationToken ct);
         
         /// <summary>
         /// Streams a file from a remote URL to S3 by downloading sequential chunks from the remote server, and uploading them to S3.
@@ -32,6 +32,6 @@ namespace Commons.Aws.Storage
         /// <param name="fileName"></param>
         /// <param name="ct"></param>
         /// <returns></returns>
-        public Task StreamHttpToS3(string remoteUrl, string bucketName, string fileName, CancellationToken ct);
+        public Task<TransferReport> StreamHttpToS3(string remoteUrl, string bucketName, string fileName, CancellationToken ct);
     }
 }
