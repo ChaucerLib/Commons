@@ -44,7 +44,7 @@ namespace Commons.Aws.Storage
 
         public Task<TransferReport> StreamLocalToS3(string localFile, string bucketName, string fileName, CancellationToken ct)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
 
         public async Task<TransferReport> StreamHttpToS3(string remoteUrl, string bucketName, string fileName, CancellationToken ct)
@@ -70,14 +70,14 @@ namespace Commons.Aws.Storage
             }
 
             var dividesEvenly = artifactSize % _chunkSize == 0;
-            var iterations = dividesEvenly
+            var totalPartNumbers = dividesEvenly
                 ? artifactSize / _chunkSize
                 : artifactSize / _chunkSize + 1;
             
-            _log.LogInformation($"{remoteUrl} artifact size = {artifactSize:N0} bytes, which will be chunked into {iterations:N0} chunks");
+            _log.LogInformation($"{remoteUrl} artifact size = {artifactSize:N0} bytes, which will be chunked into {totalPartNumbers:N0} chunks");
             
             long offset = 0;
-            var chunkStart = 0;
+            var partNumber = 1;
             string uploadId = null;
             var parts = new List<PartETag>();
             
@@ -85,11 +85,12 @@ namespace Commons.Aws.Storage
             var keep = existingUploads.FirstOrDefault();
             if (keep is not null)
             {
-                _log.LogInformation($"Found {existingUploads.Count:N0} incomplete multipart uploads. The most promising of these has {keep.Parts.Count:N0} / {iterations:N0} chunks uploaded with UploadId = {keep.UploadId}");
+                _log.LogInformation($"Found {existingUploads.Count:N0} incomplete multipart uploads. The most promising of these has {keep.Parts.Count:N0} / {totalPartNumbers:N0} chunks uploaded with UploadId = {keep.UploadId}");
                 
                 uploadId = keep.UploadId;
-                chunkStart = keep.NextPartNumberMarker;
+                partNumber = keep.NextPartNumberMarker + 1; // NextPartNumber really means PartNumber of the last successfully-uploaded chunk 
                 parts.AddRange(keep.Parts);
+                offset = (partNumber - 1) * _chunkSize;
 
                 var toDelete = existingUploads.Skip(1).ToList();
                 if (toDelete.Any())
@@ -99,18 +100,18 @@ namespace Commons.Aws.Storage
                 }
             }
 
-            for (var i = chunkStart; i <= iterations; i++)
+            for (var i = partNumber; i <= totalPartNumbers; i++)
             {
                 var isFullChunk = offset + _chunkSize < artifactSize;
                 var take = isFullChunk
                     ? _chunkSize
                     : artifactSize - offset;
 
-                var isLastChunk = i == iterations;
+                var isLastChunk = i == totalPartNumbers;
                 var rangeLimit = isLastChunk
                     ? artifactSize
                     : offset + take - 1;
-                _log.LogInformation($"Downloading chunk {i:N0} of {iterations:N0}), Range {offset:N0}-{rangeLimit:N0} bytes, requesting range {offset:N0}-{rangeLimit:N0}, Last chunk? {isLastChunk}");
+                _log.LogInformation($"Downloading chunk {i:N0} of {totalPartNumbers:N0}, Range {offset:N0}-{rangeLimit:N0} bytes, requesting range {offset:N0}-{rangeLimit:N0}, Last chunk? {isLastChunk}");
                 
                 var req = new HttpRequestMessage(HttpMethod.Get, remoteUrl)
                 {
@@ -124,7 +125,7 @@ namespace Commons.Aws.Storage
                     using (var chunk = new MemoryStream(await resp.Content.ReadAsByteArrayAsync(ct)))
                     {
                         timer.Stop();
-                        _log.LogInformation($"Chunk {i:N0} / {iterations:N0} downloaded in {timer.ElapsedMilliseconds:N0}ms");
+                        _log.LogInformation($"Chunk {i:N0} / {totalPartNumbers:N0} downloaded in {timer.ElapsedMilliseconds:N0}ms ({chunk.Length / timer.Elapsed.TotalSeconds / _mBytes:N2}MB/sec)");
                         if (uploadId is null)
                         {
                             _log.LogInformation($"Initiating multipart upload request for {bucketName}:{fileName}");
@@ -146,18 +147,18 @@ namespace Commons.Aws.Storage
                             IsLastPart = isLastChunk,
                         };
 
-                        _log.LogInformation($"Uploading chunk {chunk:N0} / {iterations:N0} of {bucketName}:{fileName} which is {take:N0} bytes with UploadId = {uploadId}");
+                        _log.LogInformation($"Uploading chunk {i:N0} / {totalPartNumbers:N0} of {bucketName}:{fileName} which is {take:N0} bytes with UploadId = {uploadId}");
                         timer = Stopwatch.StartNew();
                         var partResp = await _s3.UploadPartAsync(piece, ct);
                         timer.Stop();
-                        _log.LogInformation($"Uploaded chunk {chunk:N0} / {iterations:N0} of {bucketName}:{fileName} in {timer.ElapsedMilliseconds:N0} which was {take:N0} bytes with UploadId = {uploadId}");
+                        _log.LogInformation($"Uploaded chunk {i:N0} / {totalPartNumbers:N0} of {bucketName}:{fileName} in {timer.ElapsedMilliseconds:N0}ms ({chunk.Length / timer.Elapsed.TotalSeconds / _mBytes:N2}MB/sec) which was {chunk.Length:N0} bytes with UploadId = {uploadId}");
                         parts.Add(new PartETag(partResp.PartNumber, partResp.ETag));
                     }
                 }
 
                 offset += take;
                 var memoryUse = GC.GetTotalMemory(forceFullCollection: false) / _mBytes;
-                _log.LogInformation($"Chunk {i:N0} / {iterations:N0} completed. Memory usage = {memoryUse:N0)}MB Last chunk? {isLastChunk}");
+                _log.LogInformation($"Chunk {i:N0} / {totalPartNumbers:N0} completed. Memory usage = {memoryUse:N0}MB Last chunk? {isLastChunk}");
             }
             
             _log.LogInformation($"Last part of {bucketName}:{fileName} uploaded. Initiating completion request for UploadId = {uploadId}");
