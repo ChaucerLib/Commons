@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Amazon.S3.Model;
 
 namespace Commons.Aws.Storage
 {
@@ -33,5 +35,24 @@ namespace Commons.Aws.Storage
         /// <param name="ct"></param>
         /// <returns></returns>
         public Task<TransferReport> StreamHttpToS3(string remoteUrl, string bucketName, string fileName, CancellationToken ct);
+
+        /// <summary>
+        /// Returns an ordered list of incomplete multipart uploads that match the bucket and file name. List is ordered from most uploaded parts to fewest
+        /// uploaded parts
+        /// </summary>
+        /// <param name="bucketName"></param>
+        /// <param name="fileName"></param>
+        /// <param name="ct"></param>
+        /// <returns></returns>
+        Task<IReadOnlyList<ListPartsResponse>> FindIncompleteUploads(string bucketName, string fileName, CancellationToken ct);
+
+        /// <summary>
+        /// Removes any incomplete uploads associated with the bucket name and file name
+        /// </summary>
+        /// <param name="bucketName">The S3 bucket name</param>
+        /// <param name="fileName">The S3 key name</param>
+        /// <param name="ct"></param>
+        /// <returns></returns>
+        Task PruneIncompleteUploads(string bucketName, string fileName, CancellationToken ct);
     }
 }
